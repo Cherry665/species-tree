@@ -790,7 +790,7 @@ rm -fr Protein/tmp/
 bash Protein/info.sh
 
 # counts
-# 
+# 先筛选目标物种的有效菌株列表，再对每个物种的 seq.sqlite 数据库中提取统计指标（下表中的指标）
 bash Protein/count.sh
 
 cat Protein/counts.tsv |
@@ -803,32 +803,20 @@ cat Protein/counts.tsv |
 ```
 
 | #item      |   count |
-|------------|--------:|
-| species    |      21 |
-| strain_sum |      39 |
-| total_sum  | 363,402 |
-| dedup_sum  | 363,402 |
-| rep_sum    | 284,914 |
-| fam88_sum  | 258,055 |
-| fam38_sum  | 219,984 |
+| ---------- | ------: |
+| species    |      36 |
+| strain_sum |      67 |
+| total_sum  | 687,394 |
+| dedup_sum  | 687,394 |
+| rep_sum    | 529,592 |
+| fam88_sum  | 466,019 |
+| fam38_sum  | 390,874 |
 
-## Phylogenetics with fungi61
 
-```shell
-cd ~/data/Trichoderma/
-
-mkdir -p HMM
-
-# The Fungi HMM set
-tar xvfz ~/data/HMM/fungi61/fungi61.tar.gz --directory=HMM
-cp HMM/fungi61.lst HMM/marker.lst
-
-```
-
-## Phylogenetics with BUSCO
+## 用 BUSCO 进行系统发育分析
 
 ```shell
-cd ~/data/Trichoderma/
+cd ~/Trichoderma/
 
 rm -fr BUSCO
 
@@ -842,18 +830,18 @@ mv fungi_odb10/ BUSCO
 
 ```
 
-### Find corresponding representative proteins by `hmmsearch`
+### 通过`hmmsearch`筛选对应的代表性蛋白
 
 ```shell
-cd ~/data/Trichoderma
+cd ~/Trichoderma
 
+# 只取 pass.lst 中的物种，排除 omit.lst 中没有注释的物种
 cat Protein/species.tsv |
     tsv-join -f ASSEMBLY/pass.lst -k 1 |
     tsv-join -e -f ASSEMBLY/omit.lst -k 1 \
     > Protein/species-f.tsv
 
-#fd --full-path "Protein/.+/busco.tsv" -X rm
-
+# 在每个物种的蛋白质组中，找到与 BUSCO（真菌通用单拷贝直系同源基因库）匹配的序列，格式化输出 BUSCO marker - 蛋白 ID 映射表
 cat Protein/species-f.tsv |
     tsv-select -f 2 |
     rgr dedup stdin |
@@ -877,18 +865,21 @@ while read SPECIES; do
         > Protein/${SPECIES}/busco.tsv
 done
 
+# 统计每个 BUSCO marker 出现的次数，计算下四分位数、中位数和上四分位数
 fd --full-path "Protein/.+/busco.tsv" -X cat |
     tsv-summarize --group-by 1 --count |
     tsv-summarize --quantile 2:0.25,0.5,0.75
-#23      24      26
+#40      42      45
 
-# There are 21 species and 39 strains
-fd --full-path "Protein/.+/fungi61.tsv" -X cat |
+# There are 36 species and 67 strains
+# 需根据实际修改，这里是保留出现次数在 20 到 30 次之间的 Marker，丢弃少于20次和多于30次的（在 marker.omit.lst 中）
+fd --full-path "Protein/.+/busco.tsv" -X cat |
     tsv-summarize --group-by 1 --count |
-    tsv-filter --invert --ge 2:20 --le 2:30 |
+    tsv-filter --invert --ge 2:40 --le 2:75 |
     cut -f 1 \
     > Protein/marker.omit.lst
 
+# 提取所有 BUSCO marker 列表
 cat BUSCO/scores_cutoff |
     parallel --colsep '\s+' --no-run-if-empty --linebuffer -k -j 1 "
         echo {1}
@@ -897,8 +888,10 @@ cat BUSCO/scores_cutoff |
 
 wc -l Protein/marker.lst Protein/marker.omit.lst
 # 758 Protein/marker.lst
-#   0 Protein/marker.omit.lst
+#   186 Protein/marker.omit.lst
 
+# 去掉需要去除的基因，生成单拷贝基因列表
+# 在本地 SQLite 数据库中，将 BUSCO Marker 的身份（ID）与实际的蛋白质序列建立“强关联”索引
 cat Protein/species-f.tsv |
     tsv-select -f 2 |
     rgr dedup stdin |
@@ -923,14 +916,15 @@ done
 
 ```
 
-### Domain related protein sequences
+### 结构域相关的蛋白质序列
 
 ```shell
-cd ~/data/Trichoderma
+cd ~/Trichoderma
 
 mkdir -p Domain
 
 # each assembly
+# 从 36 个物种的本地数据库中，通过 SQL 查询精准地把那些“单拷贝 BUSCO 基因”对应的蛋白质序列提取出来
 cat Protein/species-f.tsv |
     tsv-select -f 2 |
     rgr dedup stdin |
@@ -971,18 +965,20 @@ done |
 fd --full-path "Protein/.+/seq_asm_f3.tsv" -X cat \
     > Domain/seq_asm_f3.tsv
 
+# 去冗余
 cat Domain/seq_asm_f3.tsv |
     tsv-join -e -d 2 -f summary/redundant.lst -k 1 \
     > Domain/seq_asm_f3.NR.tsv
 
 ```
 
-### Align and concat marker genes to create species tree
+### “比对并串联标记基因以构建物种树
 
 ```shell
-cd ~/data/Trichoderma
+cd ~/Trichoderma
 
 # Extract proteins
+# 对每一个 BUSCO Marker，提取对应的蛋白序列，放在一个文件夹中
 cat Protein/marker.lst |
     grep -v -Fw -f Protein/marker.omit.lst |
     parallel --no-run-if-empty --linebuffer -k -j 4 '
@@ -999,7 +995,7 @@ cat Protein/marker.lst |
             > Domain/{}/{}.pro.fa
     '
 
-# Align each marker
+# 利用 mafft 对每一个 BUSCO Marker 进行序列比对，对蛋白质序列进行“对齐”
 cat Protein/marker.lst |
     grep -v -Fw -f Protein/marker.omit.lst |
     parallel --no-run-if-empty --linebuffer -k -j 4 '
@@ -1010,11 +1006,11 @@ cat Protein/marker.lst |
         if [ -s Domain/{}/{}.aln.fa ]; then
             exit
         fi
-
 #        muscle -quiet -in Domain/{}/{}.pro.fa -out Domain/{}/{}.aln.fa
         mafft --auto Domain/{}/{}.pro.fa > Domain/{}/{}.aln.fa
     '
 
+# 将比对文件中的蛋白名改为菌株名
 cat Protein/marker.lst |
     grep -v -Fw -f Protein/marker.omit.lst |
 while read marker; do
@@ -1038,6 +1034,7 @@ while read marker; do
 done
 
 # Concat marker genes
+# 将几百个 Marker 的比对结果全部合并进一个文件（Domain/busco.aln.fas）
 cat Protein/marker.lst |
     grep -v -Fw -f Protein/marker.omit.lst |
 while read marker; do
@@ -1055,6 +1052,7 @@ while read marker; do
 done \
     > Domain/busco.aln.fas
 
+# 将基因片段的集合按菌株名串联起来
 cat Domain/seq_asm_f3.NR.tsv |
     cut -f 2 |
     rgr dedup stdin |
@@ -1064,13 +1062,15 @@ cat Domain/seq_asm_f3.NR.tsv |
 # Trim poorly aligned regions with `TrimAl`
 trimal -in Domain/busco.aln.fa -out Domain/busco.trim.fa -automated1
 
+# 统计长度（上：原始串联长度，下：修剪后长度）
 hnsm size Domain/busco.*.fa |
     rgr dedup stdin -f 2 |
     cut -f 2
-#762750
-#399438
+#556558
+#292922
 
 # To make it faster
+# 正式建树去掉 -fastest -noml，建更正式的 ML 树
 FastTree -fastest -noml Domain/busco.trim.fa > Domain/busco.trim.newick
 
 ```
@@ -1078,17 +1078,18 @@ FastTree -fastest -noml Domain/busco.trim.fa > Domain/busco.trim.newick
 ### The protein tree
 
 ```shell
-cd ~/data/Trichoderma/tree
+cd ~/Trichoderma/tree
 
+# （与 MinHash 中类似）
 nwr reroot  ../Domain/busco.trim.newick -n Sa_cer_S288C |
-    nwr order stdin --nd --an \
+    nwr ops order stdin --nd --an \
     > busco.reroot.newick
 
 nwr pl-condense --map -r species \
     busco.reroot.newick ../Count/species.tsv |
-    nwr comment stdin -r "(S|member)=" |
-    nwr comment stdin -r "^\d+$" |
-    nwr order stdin --nd --an \
+    nwr viz comment stdin -r "(S|member)=" |
+    nwr viz comment stdin -r "^\d+$" |
+    nwr ops order stdin --nd --an \
     > busco.condensed.newick
 
 mv condensed.tsv busco.condense.tsv
