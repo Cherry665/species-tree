@@ -307,17 +307,20 @@ rm raw*.*sv
 ```shell
 cd ~/Trichoderma
 
-nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
+nwr template ./summary/Trichoderma.assembly.tsv \
     --count \
     --rank genus
 
 # strains.taxon.tsv and taxa.tsv
+# 生成上面两个文件，分别是将从物种名追溯到它的属、科、目、纲和统计有多少个菌株数 (Strain)、种 (Species)、属 (Genus)、科 (Family)、目 (Order)、纲 (Class)（下表1）
 bash Count/strains.sh
 
+# 转换成 Markdown 表格格式
 cat Count/taxa.tsv |
     rgr md stdin --fmt
 
 # .lst and .count.tsv
+# 生成上面两个文件，分别统计有多少属和每个属有多少种和菌株数（下表2）
 bash Count/rank.sh
 
 mv Count/genus.count.tsv Count/genus.before.tsv
@@ -328,50 +331,51 @@ cat Count/genus.before.tsv |
 ```
 
 | item    | count |
-|---------|------:|
-| strain  |   172 |
-| species |    44 |
+| ------- | ----: |
+| strain  |   247 |
+| species |    65 |
 | genus   |     7 |
 | family  |     2 |
 | order   |     2 |
 | class   |     2 |
 
 | genus            | #species | #strains |
-|------------------|---------:|---------:|
-| Cladobotryum     |        2 |        3 |
+| ---------------- | -------: | -------: |
+| Cladobotryum     |        3 |        4 |
 | Escovopsis       |        2 |        7 |
-| Hypomyces        |        2 |        2 |
+| Hypomyces        |        4 |        4 |
 | Mycogone         |        1 |        1 |
 | Saccharomyces    |        1 |        1 |
 | Sphaerostilbella |        1 |        1 |
-| Trichoderma      |       35 |      157 |
+| Trichoderma      |       53 |      229 |
 
 ### Download and check
 
-* When `rsync.sh` is interrupted, run `check.sh` before restarting
-* For projects that have finished downloading, but have renamed strains, you can run `reorder.sh` to
-  avoid re-downloading
-    * `misplaced.tsv`
-    * `remove.list`
-* The parameters of `n50.sh` should be determined by the distribution of the description statistics
-* `collect.sh` generates a file of type `.tsv`, which is intended to be opened by spreadsheet
-  software.
-    * Information of assemblies are collected from *_assembly_report.txt *after* downloading
-    * **Note**: `*_assembly_report.txt` have `CRLF` at the end of the line.
-* `finish.sh` generates the following files
-    * `omit.lst` - no annotations
-    * `collect.pass.tsv` - passes the n50 check
-    * `pass.lst` - passes the n50 check
-    * `rep.lst` - representative or reference strains
+* 当`rsync.sh`被中断时，在重新启动下载之前，请先运行`check.sh`（用于检查哪些文件已损坏或下载不完整）  
+
+* 针对已完成下载但变更了品系名称（Strains）的项目：你可以运行`reorder.sh`来重新排序文件，以避免重复下载  
+    相关的错误放置信息记录在`misplaced.tsv`中
+    需要删除的文件列表记录在`remove.list`中
+* `n50.sh`的参数设定：应根据描述性统计数据的分布情况来决定
+* `collect.sh`的功能：它会生成一个`.tsv`格式的文件，旨在用电子表格软件（如 Excel）打开
+    * 数据来源：组装信息是在下载完成后，从每个样本对应的`*_assembly_report.txt`文件中提取的
+    * **Note**: `*_assembly_report.txt`文件的行尾使用的是 CRLF（Windows 换行符格式）
+* `finish.sh`生成以下文件：
+    * `omit.lst` - 遗漏清单 —— 记录了那些因为没有注释信息而被剔除的物种
+    * `collect.pass.tsv` - 质控汇总表 —— 记录了通过了 N50 质量检测的详细信息
+    * `pass.lst` - 通过名单 —— 记录了通过 N50 检测的物种名
+    * `rep.lst` - 代表性名单 —— 记录了典型株系（Representative strains）或参考株系（Reference strains）
     * `counts.tsv`
 
 ```shell
 cd ~/Trichoderma
 
-nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
+nwr template ./summary/Trichoderma.assembly.tsv \
     --ass
 
 # Run
+# 下载基因组文件（基因组 DNA 序列（必选）、蛋白质序列（建树必选）、基因注释信息（必选）、组装报告（质控必选））
+# 下载方式需修改
 bash ASSEMBLY/rsync.sh
 
 # Check md5; create check.lst
@@ -391,29 +395,33 @@ bash ASSEMBLY/check.sh
 #    '
 
 # N50 C S; create n50.tsv and n50.pass.tsv
-# LEN_N50   N_CONTIG    LEN_SUM
+# 只关注完整基因组 fasta 文件
+# LEN_N50：N50值   N_CONTIG:contig数量(C)    LEN_SUM：基因组长度（S）
+# 3个值有默认值100000 1000 1000000，也可以手动输入
 bash ASSEMBLY/n50.sh 100000 1000 1000000
 
 # Adjust parameters passed to `n50.sh`
+#统计数据中最差指标：N50 的最小值、Contig 数量的最大值、总长度的最小值
 cat ASSEMBLY/n50.tsv |
     tsv-filter -H --str-in-fld "name:_GCF_" |
     tsv-summarize -H --min "N50" --max "C" --min "S"
 #N50_min C_max   S_min
-#579860  533     33215161
+#579860  533     31700302
 
+# 统计三个值的中位数、10%、90%阈值
 cat ASSEMBLY/n50.tsv |
     tsv-summarize -H --quantile "N50:0.1,0.5" --quantile "C:0.5,0.9" --quantile "S:0.1,0.5" |
     datamash transpose
-#N50_pct10       103504.6
-#N50_pct50       1412965.5
-#C_pct50 157
-#C_pct90 1044.8
-#S_pct10 32206756.6
-#S_pct50 37298829.5
+#N50_pct10       139491
+#N50_pct50       1289709
+#C_pct50 147
+#C_pct90 883.8
+#S_pct10 32267925.4
+#S_pct50 37251948
 
 # After the above steps are completed, run the following commands.
 
-# Collect; create collect.tsv
+# Collect收集信息; create collect.tsv
 bash ASSEMBLY/collect.sh
 
 # After all completed
@@ -427,17 +435,17 @@ cat ASSEMBLY/counts.tsv |
 ```
 
 | #item            | fields | lines |
-|------------------|-------:|------:|
-| url.tsv          |      3 |   172 |
-| check.lst        |      1 |   172 |
-| collect.tsv      |     20 |   173 |
-| n50.tsv          |      4 |   173 |
-| n50.pass.tsv     |      4 |   151 |
-| collect.pass.tsv |     23 |   151 |
-| pass.lst         |      1 |   150 |
-| omit.lst         |      1 |   128 |
-| rep.lst          |      1 |    48 |
-| sp.lst           |      1 |    15 |
+| ---------------- | -----: | ----: |
+| url.tsv          |      3 |   247 |
+| check.lst        |      1 |   247 |
+| collect.tsv      |     20 |   248 |
+| n50.tsv          |      4 |   248 |
+| n50.pass.tsv     |      4 |   223 |
+| collect.pass.tsv |     23 |   223 |
+| pass.lst         |      1 |   222 |
+| omit.lst         |      1 |   176 |
+| rep.lst          |      1 |    51 |
+| sp.lst           |      1 |    29 |
 
 ### Rsync to hpcc
 
@@ -459,14 +467,16 @@ rsync -avP \
 
 ## BioSample
 
-ENA's BioSample missed many strains, so NCBI's was used.
+ENA's BioSample missed many strains, so NCBI's was used.  
+统计一些样本的信息
 
 ```shell
-cd ~/data/Trichoderma
+cd ~/Trichoderma
 
+# 查一下系统最高允许开多少个文件，将当前权限提升到那个最高值
 ulimit -n `ulimit -Hn`
 
-nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
+nwr template ./summary/Trichoderma.assembly.tsv \
     --bs
 
 bash BioSample/download.sh
@@ -475,7 +485,7 @@ bash BioSample/download.sh
 bash BioSample/collect.sh 10
 
 datamash check < BioSample/biosample.tsv
-#170 lines, 39 fields
+#245 lines, 42 fields
 
 cp BioSample/attributes.lst summary/
 cp BioSample/biosample.tsv summary/
@@ -484,33 +494,28 @@ cp BioSample/biosample.tsv summary/
 
 ## MinHash
 
-Estimate nucleotide divergences among strains.
+菌株间核苷酸分化程度评估
 
-* Abnormal strains
-    * This [paper](https://doi.org/10.1038/s41467-018-07641-9) showed that >95% intra-species and
-      and <83% inter-species ANI values.
-    * If the maximum value of ANI between strains within a species is greater than *0.05*, the
-      median and maximum value will be reported. Strains that cannot be linked by the median
-      ANI, e.g., have no similar strains in the species, will be considered as abnormal strains.
-    * It may consist of two scenarios:
-        1. Wrong species identification
-        2. Poor assembly quality
+* 异常菌株
+    * [文献](https://doi.org/10.1038/s41467-018-07641-9) 指出：同物种内平均核苷酸一致性（ANI）＞95%，不同物种间ANI＜83%
+    * 若某物种内部菌株间的最大 ANI 差异＞0.05，则需报告其中位数与最大值。无法通过中位数 ANI 关联的菌株（如在该物种中无相似菌株），将被判定为异常菌株
+    * 异常通常分为两种情况：
+        1. 物种鉴定错误
+        2. 基因组组装质量较差
 
-* Non-redundant strains
-    * If the ANI value between two strains within a species is less than *0.005*, the two strains
-      are considered to be redundant.
-    * Need these files:  representative.lst and omit.lst
+* 去冗余菌株
+    * 若同一物种内两株菌株的 ANI 差异＜0.005，则视为冗余菌株
+    * 需要文件：representative.lst and omit.lst
 
-* MinHash tree
-    * A rough tree is generated by k-mean clustering.
+* MinHash 进化树
+    * 通过 k‑均值聚类生成初步进化树
 
-* These abnormal strains should be manually checked to determine whether to include them in the
-  subsequent steps.
+* T这些异常菌株需人工核查，以确定是否纳入后续分析步骤
 
 ```shell
-cd ~/data/Trichoderma
+cd ~/Trichoderma
 
-nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
+nwr template ./summary/Trichoderma.assembly.tsv \
     --mh \
     --parallel 8 \
     --in ASSEMBLY/pass.lst \
@@ -518,11 +523,15 @@ nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
     --ani-nr 0.005
 
 # Compute assembly sketches
+# 先筛选出需要分析的菌株，再并行检查并生成每个菌株的 MinHash 草图（.msh文件）
 bash MinHash/compute.sh
 
 # Non-redundant strains within species
+# 生成每个物种的非冗余组装体 ID 列表 NR.lst，冗余组装体 ID 列表 redundant.lst
+# 将 cluster 一行改为 hnsm clust cc stdin
 bash MinHash/nr.sh
 
+# 组合所有的 NR.lst 和 redundant.lst，合并后去重并排序
 find MinHash -name "NR.lst" |
     xargs cat |
     sort |
@@ -534,65 +543,72 @@ find MinHash -name "redundant.lst" |
     uniq \
     > summary/redundant.lst
 wc -l summary/NR.lst summary/redundant.lst
-#  80 summary/NR.lst
-#  51 summary/redundant.lst
+#  117 summary/NR.lst
+#  68 summary/redundant.lst
 
 # Abnormal strains
+# 识别基因组相似度异常的菌株：筛选出菌株间最大距离超过阈值的物种，并定位其中的异常菌株
+# 将 cluster 一行改为 hnsm clust cc stdin
 bash MinHash/abnormal.sh
 
 cat MinHash/abnormal.lst | wc -l
-#13
+#22
 
-# Distances between all selected sketches, then hierarchical clustering
-cd ~/data/Trichoderma/
+# 计算草图间的距离，继而进行层次聚类分析
+cd ~/Trichoderma/
 
-nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
+nwr template ./summary/Trichoderma.assembly.tsv \
     --mh \
     --parallel 8 \
     --not-in summary/redundant.lst \
     --height 0.4
 
+# 筛选非冗余的基因组 Mash 索引文件，计算所有基因组间的 Mash 距离矩阵,用 R 对基因组聚类，并按距离阈值划分聚类组，输出进化树（tree.nwk）和聚类结果（groups.tsv）
 bash MinHash/dist.sh
 
 ```
 
-### Condense branches in the minhash tree
+### 合并minhash tree的分支
 
-* This phylo-tree is not really formal/correct, and shouldn't be used to interpret phylogenetic
-  relationships
-* It is just used to find more abnormal strains
+* 该系统发育树并非严格意义上规范 / 正确的版本，不应被用于解读系统发育关系
+* 其仅用于筛选更多的异常菌株
 
 ```shell
-mkdir -p ~/data/Trichoderma/tree
-cd ~/data/Trichoderma/tree
+mkdir -p ~/Trichoderma/tree
+cd ~/Trichoderma/tree
 
+# 将树的根设置在 Sa_cer_S288C 上
+# 对进化树节点进行排序，--nd 按每个节点的 “后代数量” 升序排列（后代数量越少的分支越靠前），--an 按节点标签的字母数字顺序升序排列
 nw_reroot ../MinHash/tree.nwk Sa_cer_S288C |
-    nwr order stdin --nd --an \
+    nwr ops order stdin --nd --an \
     > minhash.reroot.newick
 
+# 将物种名映射到树上，并按物种层级合并树分支，清理树的注释信息
 nwr pl-condense --map -r species \
     minhash.reroot.newick ../MinHash/species.tsv |
-    nwr comment stdin -r "(S|member)=" |
-    nwr comment stdin -r "^\d+$" |
-    nwr order stdin --nd --an \
+    nwr viz comment stdin -r "(S|member)=" |
+    nwr viz comment stdin -r "^\d+$" |
+    nwr ops order stdin --nd --an \
     > minhash.condensed.newick
 
 mv condensed.tsv minhash.condensed.tsv
 
-nwr tex minhash.condensed.newick --bl -o Trichoderma.minhash.tex
+# 转换为 LaTeX 格式的可视化代码文件
+nwr viz tex minhash.condensed.newick --bl -o Trichoderma.minhash.tex
 
+# 编译LaTeX文件生成PDF
 tectonic Trichoderma.minhash.tex
 
 ```
 
-## Count valid species and strains
+## 统计有效的物种和菌株数量
 
 ### For *genomic alignments*
 
 ```shell
-cd ~/data/Trichoderma/
+cd ~/Trichoderma/
 
-nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
+nwr template ./summary/Trichoderma.assembly.tsv \
     --count \
     --in ASSEMBLY/pass.lst \
     --not-in MinHash/abnormal.lst \
@@ -600,18 +616,21 @@ nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
     --lineage family --lineage genus
 
 # strains.taxon.tsv and taxa.tsv
+# 筛选出 “质量合格 + 非异常” 的菌株,生成统计数据（下表1）
 bash Count/strains.sh
 
 cat Count/taxa.tsv |
     rgr md stdin --num
 
 # .lst and .count.tsv
+# 提取所有有效属名并生成列表，再对每个属批量统计其包含的唯一物种数和唯一菌株数（下表2）
 bash Count/rank.sh
 
 cat Count/genus.count.tsv |
     rgr md stdin --num
 
 # Can accept N_COUNT
+# 按「科→属→物种」层级统计菌株数量，筛选出数量达标（≥输入数量）的物种
 bash Count/lineage.sh 1
 
 cat Count/lineage.count.tsv |
@@ -623,76 +642,96 @@ cp Count/strains.taxon.tsv summary/genome.taxon.tsv
 ```
 
 | item    | count |
-|---------|------:|
-| strain  |   137 |
-| species |    38 |
+| ------- | ----: |
+| strain  |   200 |
+| species |    58 |
 | genus   |     5 |
 | family  |     2 |
 | order   |     2 |
 | class   |     2 |
 
 | genus         | #species | #strains |
-|---------------|---------:|---------:|
-| Cladobotryum  |        2 |        3 |
+| ------------- | -------: | -------: |
+| Cladobotryum  |        3 |        4 |
 | Escovopsis    |        2 |        7 |
-| Hypomyces     |        2 |        2 |
+| Hypomyces     |        4 |        4 |
 | Saccharomyces |        1 |        1 |
-| Trichoderma   |       31 |      124 |
+| Trichoderma   |       48 |      184 |
 
 | #family            | genus         | species                     | count |
-|--------------------|---------------|-----------------------------|------:|
+| ------------------ | ------------- | --------------------------- | ----: |
 | Hypocreaceae       | Cladobotryum  | Cladobotryum mycophilum     |     2 |
 |                    |               | Cladobotryum protrusum      |     1 |
+|                    |               | Cladobotryum sp.            |     1 |
 |                    | Escovopsis    | Escovopsis sp.              |     5 |
 |                    |               | Escovopsis weberi           |     2 |
-|                    | Hypomyces     | Hypomyces perniciosus       |     1 |
+|                    | Hypomyces     | Hypomyces aurantius         |     1 |
+|                    |               | Hypomyces perniciosus       |     1 |
 |                    |               | Hypomyces rosellus          |     1 |
-|                    | Trichoderma   | Trichoderma afroharzianum   |     5 |
+|                    |               | Hypomyces semicircularis    |     1 |
+|                    | Trichoderma   | Trichoderma aethiopicum     |     1 |
+|                    |               | Trichoderma afarasin        |     1 |
+|                    |               | Trichoderma afroharzianum   |     5 |
 |                    |               | Trichoderma aggressivum     |     1 |
 |                    |               | Trichoderma arundinaceum    |     4 |
-|                    |               | Trichoderma asperelloides   |     3 |
-|                    |               | Trichoderma asperellum      |    18 |
+|                    |               | Trichoderma asperelloides   |     4 |
+|                    |               | Trichoderma asperellum      |    22 |
 |                    |               | Trichoderma atrobrunneum    |     1 |
-|                    |               | Trichoderma atroviride      |    10 |
+|                    |               | Trichoderma atroviride      |    12 |
+|                    |               | Trichoderma austrokoningii  |     1 |
+|                    |               | Trichoderma barbatum        |     1 |
 |                    |               | Trichoderma breve           |     1 |
 |                    |               | Trichoderma brevicrassum    |     1 |
-|                    |               | Trichoderma citrinoviride   |     4 |
+|                    |               | Trichoderma camerunense     |     1 |
+|                    |               | Trichoderma caribbaeum      |     1 |
+|                    |               | Trichoderma ceciliae        |     1 |
+|                    |               | Trichoderma cf. simile WF8  |     1 |
+|                    |               | Trichoderma chlorosporum    |     1 |
+|                    |               | Trichoderma citrinoviride   |     6 |
+|                    |               | Trichoderma compactum       |     1 |
 |                    |               | Trichoderma cornu-damae     |     1 |
 |                    |               | Trichoderma endophyticum    |     4 |
 |                    |               | Trichoderma erinaceum       |     2 |
-|                    |               | Trichoderma gamsii          |     2 |
-|                    |               | Trichoderma gracile         |     1 |
+|                    |               | Trichoderma evansii         |     1 |
+|                    |               | Trichoderma gamsii          |     4 |
+|                    |               | Trichoderma ghanense        |     1 |
+|                    |               | Trichoderma gracile         |     2 |
 |                    |               | Trichoderma guizhouense     |     1 |
-|                    |               | Trichoderma hamatum         |     1 |
-|                    |               | Trichoderma harzianum       |    10 |
+|                    |               | Trichoderma hamatum         |     5 |
+|                    |               | Trichoderma harzianum       |    16 |
 |                    |               | Trichoderma koningii        |     1 |
-|                    |               | Trichoderma koningiopsis    |     5 |
+|                    |               | Trichoderma koningiopsis    |     8 |
 |                    |               | Trichoderma lentiforme      |     1 |
 |                    |               | Trichoderma lixii           |     1 |
-|                    |               | Trichoderma longibrachiatum |     7 |
+|                    |               | Trichoderma longibrachiatum |    11 |
+|                    |               | Trichoderma novae-zelandiae |     1 |
 |                    |               | Trichoderma orchidacearum   |     1 |
+|                    |               | Trichoderma pleuroticola    |     1 |
 |                    |               | Trichoderma polysporum      |     1 |
-|                    |               | Trichoderma reesei          |    19 |
+|                    |               | Trichoderma reesei          |    25 |
 |                    |               | Trichoderma semiorbis       |     1 |
 |                    |               | Trichoderma simmonsii       |     1 |
-|                    |               | Trichoderma sp.             |     4 |
+|                    |               | Trichoderma sp.             |    11 |
+|                    |               | Trichoderma velutinum       |     1 |
 |                    |               | Trichoderma virens          |     9 |
-|                    |               | Trichoderma viride          |     3 |
+|                    |               | Trichoderma viride          |     4 |
+|                    |               | Trichoderma virilente       |     1 |
+|                    |               | Trichoderma yunnanense      |     1 |
 | Saccharomycetaceae | Saccharomyces | Saccharomyces cerevisiae    |     1 |
 
 ### For *protein families*
 
 ```shell
-cd ~/data/Trichoderma/
+cd ~/Trichoderma/
 
-nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
+nwr template ./summary/Trichoderma.assembly.tsv \
     --count \
     --in ASSEMBLY/pass.lst \
     --not-in MinHash/abnormal.lst \
     --not-in ASSEMBLY/omit.lst \
     --rank genus
 
-# strains.taxon.tsv and taxa.tsv
+# strains.taxon.tsv and taxa.tsv（下表1）
 bash Count/strains.sh
 
 cat Count/taxa.tsv |
@@ -710,44 +749,48 @@ cp Count/strains.taxon.tsv summary/protein.taxon.tsv
 ```
 
 | item    | count |
-|---------|------:|
-| strain  |    35 |
-| species |    20 |
+| ------- | ----: |
+| strain  |    59 |
+| species |    36 |
 | genus   |     4 |
 | family  |     2 |
 | order   |     2 |
 | class   |     2 |
 
 | genus         | #species | #strains |
-|---------------|---------:|---------:|
+| ------------- | -------: | -------: |
 | Cladobotryum  |        1 |        1 |
 | Escovopsis    |        1 |        1 |
 | Saccharomyces |        1 |        1 |
-| Trichoderma   |       17 |       32 |
+| Trichoderma   |       33 |       56 |
 
 ## Collect proteins
 
 ```shell
-cd ~/data/Trichoderma/
+cd ~/Trichoderma/
 
-nwr template ~/Scripts/genomes/assembly/Trichoderma.assembly.tsv \
+nwr template ./summary/Trichoderma.assembly.tsv \
     --pro \
     --in ASSEMBLY/pass.lst \
     --not-in ASSEMBLY/omit.lst
 
-# collect proteins
+# 为每个物种构建标准化的蛋白序列资源库：先根据输入参数筛选目标物种的菌株列表，再对每个物种批量提取其所有菌株的蛋白序列（*_protein.faa.gz），去重后生成该物种的非冗余蛋白库，同时整理蛋白注释和组装体关联信息并压缩保存
 bash Protein/collect.sh
 
 # clustering
 # It may need to be run several times
+# 先把物种的蛋白去重（菌株级去冗余→物种级代表序列）（95% 相似rep_seq.fa.gz），再按 80% 相似分功能家族（物种级代表序列→蛋白家族）（fam88_cluster.tsv），按 30% 相似分进化家族（远缘蛋白家族聚类）（fam38_cluster.tsv），最终得到不同层级的蛋白分类结果
 bash Protein/cluster.sh
 
 rm -fr Protein/tmp/
 
 # info.tsv
+# 先筛选目标物种的有效菌株列表，再将每个物种的蛋白序列、注释、聚类结果等多维度数据整合到 SQLite 数据库（seq.sqlite）中
+# pro.fa.gz（非冗余蛋白库）、rep_cluster.tsv（95% 聚类结果）、anno.tsv.gz（蛋白注释）、asmseq.tsv.gz（蛋白 - 菌株关联）、fam88_cluster.tsv（80% 聚类）、fam38_cluster.tsv（30% 聚类）
 bash Protein/info.sh
 
 # counts
+# 
 bash Protein/count.sh
 
 cat Protein/counts.tsv |
