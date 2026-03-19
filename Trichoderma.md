@@ -1081,7 +1081,7 @@ FastTree -fastest -noml Domain/busco.trim.fa > Domain/busco.trim.newick
 cd ~/Trichoderma/tree
 
 # （与 MinHash 中类似）
-nwr reroot  ../Domain/busco.trim.newick -n Sa_cer_S288C |
+nw_reroot  ../Domain/busco.trim.newick Sa_cer_S288C |
     nwr ops order stdin --nd --an \
     > busco.reroot.newick
 
@@ -1094,7 +1094,7 @@ nwr pl-condense --map -r species \
 
 mv condensed.tsv busco.condense.tsv
 
-nwr tex minhash.condensed.newick --bl -o Trichoderma.busco.tex
+nwr viz tex minhash.condensed.newick --bl -o Trichoderma.busco.tex
 
 tectonic Trichoderma.busco.tex
 
