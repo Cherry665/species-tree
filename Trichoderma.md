@@ -555,7 +555,7 @@ cat MinHash/abnormal.lst | wc -l
 #22
 
 # 计算草图间的距离，继而进行层次聚类分析
-cd ~/Trichoderma/
+cd ~/Trichoderma
 
 nwr template ./summary/Trichoderma.assembly.tsv \
     --mh \
@@ -606,7 +606,7 @@ tectonic Trichoderma.minhash.tex
 ### For *genomic alignments*
 
 ```shell
-cd ~/Trichoderma/
+cd ~/Trichoderma
 
 nwr template ./summary/Trichoderma.assembly.tsv \
     --count \
