@@ -167,7 +167,6 @@ sed -i 's/Saccharomyces_cerevisiae/ASSEMBLY/g' ./MinHash/species.tsv
 bash MinHash/compute.sh
 
 # 将 cluster 一行改为 hnsm clust cc stdin
-# ANI_VALUE=0.001
 bash MinHash/nr.sh
 
 cp MinHash/ASSEMBLY/NR.lst summary/NR.lst
