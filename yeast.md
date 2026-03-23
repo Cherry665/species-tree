@@ -1,4 +1,4 @@
-# 文件处理
+## 文件处理
 
 ```shell
 cd ~/yeast/genomes
@@ -102,7 +102,7 @@ done
 echo "yeast.assembly.tsv 已生成，共有 $(wc -l yeast.assembly.tsv) 行"
 ```
 
-# 检查
+## 检查
 
 ```shell
 cd ~/yeast
@@ -152,7 +152,7 @@ cat ASSEMBLY/counts.tsv |
 | omit.lst     |      0 |     0 |
 | rep.lst      |      1 |   860 |
 
-# MinHash
+## MinHash
 
 ```shell
 cd ~/yeast
@@ -192,7 +192,7 @@ nwr template ./summary/yeast.assembly.tsv \
 bash MinHash/dist.sh
 ```
 
-# minhash tree
+## minhash tree
 
 ```shell
 mkdir -p ~/yeast/tree
@@ -205,7 +205,7 @@ nw_reroot ../MinHash/tree.nwk Saccharomyces_paradoxus |
 
 ```
 
-# 收集蛋白
+## 收集蛋白
 
 ```shell
 cd ~/yeast
@@ -238,7 +238,7 @@ mv saccharomycetes_odb10/ BUSCO
 
 ```
 
-# 通过`hmmsearch`筛选对应的代表性蛋白
+## 通过`hmmsearch`筛选对应的代表性蛋白
 
 ```shell
 cd ~/yeast
@@ -315,7 +315,7 @@ fi
 
 ```
 
-# 结构域相关的蛋白质序列
+## 结构域相关的蛋白质序列
 
 ```shell
 cd ~/yeast
@@ -364,7 +364,7 @@ cat Domain/seq_asm_f3.tsv |
 
 ```
 
-# 比对并串联标记基因以构建物种树
+## 比对并串联标记基因以构建物种树
 
 ```shell
 cd ~/yeast
@@ -451,12 +451,14 @@ hnsm size Domain/busco.*.fa |
 
 ```
 
-# 建树
+## 建树
 
 ```shell
-# 正式建树去掉 -fastest -noml，建更正式的 ML 树
+# 测试
 # FastTree -fastest -noml Domain/busco.trim.fa > Domain/busco.trim.test.newick
-FastTree Domain/busco.trim.fa > Domain/busco.trim.ML.newick
+# 正式建树，使用超算
+# FastTree Domain/busco.trim.fa > Domain/busco.trim.ML.newick
+FastTree /share/home/wangq/chenli/busco.trim.fa > /share/home/wangq/chenli/busco.trim.ML.newick
 
 cd ~/yeast/tree
 nw_reroot  ../Domain/busco.trim.ML.newick Saccharomyces_paradoxus |
