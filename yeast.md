@@ -153,6 +153,7 @@ cat ASSEMBLY/counts.tsv |
 | rep.lst      |      1 |   860 |
 
 # MinHash
+
 ```shell
 cd ~/yeast
 nwr template ./summary/yeast.assembly.tsv \
@@ -193,6 +194,7 @@ bash MinHash/dist.sh
 ```
 
 # minhash tree
+
 ```shell
 mkdir -p ~/yeast/tree
 cd ~/yeast/tree
@@ -205,6 +207,7 @@ nw_reroot ../MinHash/tree.nwk Saccharomyces_paradoxus |
 ```
 
 # 收集蛋白
+
 ```shell
 cd ~/yeast
 sed -i '/Saccharomyces_paradoxus/d' MinHash/abnormal.lst
@@ -314,6 +317,7 @@ fi
 ```
 
 # 结构域相关的蛋白质序列
+
 ```shell
 cd ~/yeast
 mkdir -p Domain
@@ -362,6 +366,7 @@ cat Domain/seq_asm_f3.tsv |
 ```
 
 # 比对并串联标记基因以构建物种树
+
 ```shell
 cd ~/yeast
 
