@@ -192,7 +192,7 @@ nwr template ./summary/yeast.assembly.tsv \
 bash MinHash/dist.sh
 ```
 
-# 合并 minhash tree 的分支
+# minhash tree
 ```shell
 mkdir -p ~/yeast/tree
 cd ~/yeast/tree
