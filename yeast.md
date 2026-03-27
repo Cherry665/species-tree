@@ -233,8 +233,8 @@ bash Protein/info.sh
 cd ~/yeast
 rm -fr BUSCO
 
-curl -L https://busco-data.ezlab.org/v5/data/lineages/saccharomycetes_odb10.2024-01-08.tar.gz | tar xvz
-mv saccharomycetes_odb10/ BUSCO
+curl -L https://busco-data.ezlab.org/v5/data/lineages/fungi_odb10.2024-01-08.tar.gz | tar xvz
+mv fungi_odb10/ BUSCO
 
 ```
 
@@ -298,8 +298,8 @@ cat BUSCO/scores_cutoff |
     > Protein/marker.lst
 
 wc -l Protein/marker.lst Protein/marker.omit.lst
-# 2137 Protein/marker.lst
-# 1567 Protein/marker.omit.lst
+# 758 Protein/marker.lst
+# 584 Protein/marker.omit.lst
 
 # 去掉需要去除的基因，生成单拷贝基因列表
 if [[ ! -s "Protein/ASSEMBLY/busco.tsv" ]]; then
@@ -446,8 +446,8 @@ trimal -in Domain/busco.aln.fa -out Domain/busco.trim.fa -automated1
 hnsm size Domain/busco.*.fa |
     rgr dedup stdin -f 2 |
     cut -f 2
-# 343703
-# 269218
+# 88009
+# 67558
 
 ```
 
@@ -458,7 +458,7 @@ hnsm size Domain/busco.*.fa |
 # FastTree -fastest -noml Domain/busco.trim.fa > Domain/busco.trim.test.newick
 # 正式建树，使用超算
 # FastTree Domain/busco.trim.fa > Domain/busco.trim.ML.newick
-FastTree /share/home/wangq/chenli/busco.trim.fa > /share/home/wangq/chenli/busco.trim.ML.newick
+FastTree /share/home/wangq/chenli/yeast/busco.trim.fa > /share/home/wangq/chenli/yeast/busco.trim.ML.newick
 
 cd ~/yeast/tree
 nw_reroot  ../Domain/busco.trim.ML.newick Saccharomyces_paradoxus |
