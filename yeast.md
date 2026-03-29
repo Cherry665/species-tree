@@ -466,3 +466,158 @@ nw_reroot  ../Domain/busco.trim.ML.newick Saccharomyces_paradoxus |
     > busco_S_cerevisiae_strain_tree.newick
 
 ```
+
+## fungi61
+```shell
+cd ~/yeast
+mkdir -p HMM
+
+# The Fungi HMM set
+tar xvfz ~/data/HMM/fungi61/fungi61.tar.gz --directory=HMM
+cp HMM/fungi61.lst HMM/marker.lst
+cp HMM/marker.lst Protein/Fungi61_marker.lst
+
+if [[ ! -s "Protein/ASSEMBLY/rep_seq.fa.gz" ]]; then
+    echo "Error: rep_seq.fa.gz not found"
+    exit 1
+fi
+
+if [[ -s "Protein/ASSEMBLY/fungi61.tsv" ]]; then
+    log_info "fungi61.tsv already exists, skipping."
+else
+    # 遍历 61 个 marker 进行 hmmsearch
+    cat HMM/marker.lst |
+        parallel --no-run-if-empty --linebuffer -k -j 8 "
+            gzip -dcf Protein/ASSEMBLY/rep_seq.fa.gz |
+                hmmsearch -E 1e-10 --domE 1e-10 --noali --notextw HMM/hmm/{}.HMM - |
+                grep '>>' |
+                perl -nl -e ' m(>>\s+(\S+)) and printf qq(%s\t%s\n), q({}), \$1; '
+        " > Protein/ASSEMBLY/fungi61.tsv
+fi
+
+# 写入 SQLite 数据库（新增一列 fungi61）
+sqlite3 Protein/ASSEMBLY/seq.sqlite "ALTER TABLE rep ADD COLUMN fungi61 TEXT;"
+nwr seqdb -d Protein/ASSEMBLY --rep fungi61=Protein/ASSEMBLY/fungi61.tsv
+
+# 统计每个 Fungi61 marker 在多少个菌株中存在
+sqlite3 -tabs "Protein/ASSEMBLY/seq.sqlite" <<EOF > "Protein/ASSEMBLY/fungi61_stats.tsv"
+    SELECT 
+        rep.fungi61 AS fungi61_id, 
+        COUNT(DISTINCT asm_seq.asm_id) AS strain_count
+    FROM asm_seq
+    JOIN rep_seq ON asm_seq.seq_id = rep_seq.seq_id
+    JOIN rep ON rep_seq.rep_id = rep.id
+    WHERE rep.fungi61 IS NOT NULL
+    GROUP BY rep.fungi61;
+EOF
+
+sqlite3 -tabs "Protein/ASSEMBLY/seq.sqlite" > Protein/ASSEMBLY/copy_number_matrix.tsv <<EOF
+SELECT 
+    asm.name AS strain_name,
+    rep.f61 AS gene_id,
+    COUNT(asm_seq.seq_id) AS copy_number
+FROM asm_seq
+JOIN rep_seq ON asm_seq.seq_id = rep_seq.seq_id
+JOIN rep ON rep_seq.rep_id = rep.id
+JOIN asm ON asm_seq.asm_id = asm.id
+WHERE rep.f61 IS NOT NULL
+GROUP BY asm.name, rep.f61;
+EOF
+
+sqlite3 -tabs Protein/ASSEMBLY/seq.sqlite "
+    SELECT rep.fungi61
+    FROM asm_seq
+    JOIN rep_seq ON asm_seq.seq_id = rep_seq.seq_id
+    JOIN rep ON rep_seq.rep_id = rep.id
+    WHERE rep.fungi61 IS NOT NULL
+    GROUP BY rep.fungi61
+    HAVING COUNT(DISTINCT asm_seq.asm_id) < 817;
+" > Protein/Fungi61_marker.omit.lst
+
+awk -F'\t' '$3 >= 10 {print $2}' Protein/ASSEMBLY/copy_number_matrix.tsv | sort -u >> Protein/Fungi61_marker.omit.lst
+# python find_redundancy.py
+
+wc -l Protein/Fungi61_marker.lst Protein/Fungi61_marker.omit.lst
+# 61 Protein/Fungi61_marker.lst
+# 15 Protein/Fungi61_marker.omit.lst
+
+# 生成单拷贝的高质量 marker 列表 (f61 列)
+if [[ -s "Protein/ASSEMBLY/seq.sqlite" ]]; then
+cat Protein/ASSEMBLY/fungi61.tsv |
+    grep -v -Fw -f Protein/Fungi61_marker.omit.lst \
+    > Protein/ASSEMBLY/fungi61.sc.tsv
+    # sqlite3 Protein/ASSEMBLY/seq.sqlite "ALTER TABLE rep ADD COLUMN f61 TEXT;"
+    nwr seqdb -d Protein/ASSEMBLY --rep f61=Protein/ASSEMBLY/fungi61.sc.tsv
+fi
+
+mkdir -p Domain_F61
+# 提取 f61 满足条件的序列映射
+echo "
+    SELECT seq.name, asm.name, rep.f61
+    FROM asm_seq
+    JOIN rep_seq ON asm_seq.seq_id = rep_seq.seq_id
+    JOIN seq ON asm_seq.seq_id = seq.id
+    JOIN rep ON rep_seq.rep_id = rep.id
+    JOIN asm ON asm_seq.asm_id = asm.id
+    WHERE rep.f61 IS NOT NULL
+    ORDER BY asm.name, rep.f61
+" | sqlite3 -tabs "Protein/ASSEMBLY/seq.sqlite" > "Protein/ASSEMBLY/seq_asm_f61.tsv"
+
+# 提取序列
+hnsm some "Protein/ASSEMBLY/pro.fa.gz" <(
+    tsv-select -f 1 "Protein/ASSEMBLY/seq_asm_f61.tsv" | rgr dedup stdin
+) | hnsm dedup stdin | hnsm gz stdin -o "Domain_F61/fungi61.fa"
+
+cp Protein/ASSEMBLY/seq_asm_f61.tsv Domain_F61/seq_asm_f61.tsv
+
+# 去冗余
+cat Domain_F61/seq_asm_f61.tsv |
+    tsv-join -e -d 2 -f summary/redundant.lst -k 1 \
+    > Domain_F61/seq_asm_f61.NR.tsv
+
+# 分配、比对和重命名
+cat Protein/Fungi61_marker.lst | grep -v -Fw -f Protein/Fungi61_marker.omit.lst |
+parallel --no-run-if-empty --linebuffer -k -j 8 '
+    echo >&2 "==> marker [{}]"
+    mkdir -p Domain_F61/{}
+    
+    # 提取单基因序列
+    hnsm some Domain_F61/fungi61.fa.gz <(
+        cat Domain_F61/seq_asm_f61.tsv | tsv-filter --str-eq "3:{}" | tsv-select -f 1 | rgr dedup stdin
+    ) > Domain_F61/{}/{}.pro.fa
+    
+    # MAFFT 比对
+    if [ ! -s Domain_F61/{}/{}.aln.fa ]; then
+        mafft --auto Domain_F61/{}/{}.pro.fa > Domain_F61/{}/{}.aln.fa
+    fi
+'
+
+# 将序列 ID 替换为菌株 (Assembly) ID
+cat Protein/Fungi61_marker.lst | grep -v -Fw -f Protein/Fungi61_marker.omit.lst |
+while read marker; do
+    if [ ! -s Domain_F61/${marker}/${marker}.aln.fa ]; then continue; fi
+    cat Domain_F61/seq_asm_f61.NR.tsv |
+        tsv-filter --str-eq "3:${marker}" |
+        tsv-select -f 1-2 |
+        hnsm replace -s Domain_F61/${marker}/${marker}.aln.fa stdin \
+        > Domain_F61/${marker}/${marker}.replace.fa
+done
+
+# 收集所有对齐结果
+cat Protein/Fungi61_marker.lst | grep -v -Fw -f Protein/Fungi61_marker.omit.lst |
+while read marker; do
+    if [ ! -s Domain_F61/${marker}/${marker}.aln.fa ]; then continue; fi
+    cat Domain_F61/${marker}/${marker}.replace.fa
+    echo
+done > Domain_F61/fungi61.aln.fas
+
+# 4. 串联与修剪
+cat Domain_F61/seq_asm_f61.NR.tsv | cut -f 2 | rgr dedup stdin | sort |
+    fasops concat Domain_F61/fungi61.aln.fas stdin -o Domain_F61/fungi61.aln.fa
+
+trimal -in Domain_F61/fungi61.aln.fa -out Domain_F61/fungi61.trim.fa -automated1
+
+hnsm size Domain_F61/fungi61.*.fa | rgr dedup stdin -f 2 | cut -f 2
+# 41304
+# 27650
+```
