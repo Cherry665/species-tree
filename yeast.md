@@ -223,6 +223,7 @@ bash Protein/collect.sh
 bash Protein/cluster.sh
 rm -fr Protein/ASSEMBLY/tmp/
 
+# 修改 info.sh
 bash Protein/info.sh
 
 ```
