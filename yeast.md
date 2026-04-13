@@ -209,7 +209,7 @@ nw_reroot ../MinHash/tree.nwk Saccharomyces_paradoxus |
 
 ```shell
 cd ~/yeast
-sed -i '/Saccharomyces_paradoxus/d' MinHash/abnormal.lst
+# sed -i '/Saccharomyces_paradoxus/d' MinHash/abnormal.lst
 
 nwr template ./summary/yeast.assembly.tsv \
     --pro \
