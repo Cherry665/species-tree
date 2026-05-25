@@ -267,27 +267,29 @@ else
 fi
 
 sqlite3 Protein/ASSEMBLY/seq.sqlite "ALTER TABLE rep ADD COLUMN busco TEXT;"
-nwr seqdb -d Protein/ASSEMBLY --rep busco=Protein/ASSEMBLY/busco.tsv
+
+# 不支持自定义字段名称了，及后面 busco 改为 f4 ？
+nwr seqdb -d Protein/ASSEMBLY --rep f4=Protein/ASSEMBLY/busco.tsv
 
 sqlite3 -tabs "Protein/ASSEMBLY/seq.sqlite" <<EOF > "Protein/ASSEMBLY/busco_stats.tsv"
     SELECT 
-        rep.busco AS busco_id, 
+        rep.f4 AS f4_id, 
         COUNT(DISTINCT asm_seq.asm_id) AS strain_count
     FROM asm_seq
     JOIN rep_seq ON asm_seq.seq_id = rep_seq.seq_id
     JOIN rep ON rep_seq.rep_id = rep.id
-    WHERE rep.busco IS NOT NULL
-    GROUP BY rep.busco;
+    WHERE rep.f4 IS NOT NULL
+    GROUP BY rep.f4;
 EOF
 
 # 在至少 95% 的菌株中存在且为单拷贝
 sqlite3 -tabs Protein/ASSEMBLY/seq.sqlite "
-    SELECT rep.busco
+    SELECT rep.f4
     FROM asm_seq
     JOIN rep_seq ON asm_seq.seq_id = rep_seq.seq_id
     JOIN rep ON rep_seq.rep_id = rep.id
-    WHERE rep.busco IS NOT NULL
-    GROUP BY rep.busco
+    WHERE rep.f4 IS NOT NULL
+    GROUP BY rep.f4
     HAVING COUNT(asm_seq.seq_id) != COUNT(DISTINCT asm_seq.asm_id)
         OR COUNT(DISTINCT asm_seq.asm_id) < 817;
 " > Protein/marker.omit.lst
@@ -462,7 +464,7 @@ hnsm size Domain/busco.*.fa |
 FastTree /share/home/wangq/chenli/yeast/busco.trim.fa > /share/home/wangq/chenli/yeast/busco.trim.ML.newick
 
 cd ~/yeast/tree
-nw_reroot  ../Domain/busco.trim.ML.newick Saccharomyces_paradoxus |
+nw_reroot  ../Domain/busco.trim.ML.newick BAL BAG AMH |
     nwr ops order stdin --nd --an \
     > busco_S_cerevisiae_strain_tree.newick
 
